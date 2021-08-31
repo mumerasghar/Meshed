@@ -1,0 +1,10 @@
+torch~=1.9.0
+six~=1.16.0
+tqdm~=4.62.2
+pycocotools~=2.0.2
+matplotlib
+
+numpy~=1.19.5
+h5py~=3.1.0
+requests~=2.26.0
+pytorch-nlp
