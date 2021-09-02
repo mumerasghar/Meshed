@@ -1,3 +1,6 @@
 venv
 .idea
 Flicker8k_Dataset/
+tensorboard_logs
+.vscode
+saved_models

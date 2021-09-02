@@ -7,6 +7,11 @@ from .example import Example
 from .utils import nostdout
 from pycocotools.coco import COCO as pyCOCO
 
+import os
+import pickle5 as pickle
+from torch.utils.data import Dataset as Dataset_Org
+from torchnlp.encoders.text import StaticTokenizerEncoder, pad_tensor
+
 
 class Dataset(object):
     def __init__(self, examples, fields):
@@ -280,4 +285,67 @@ class COCO(PairedDataset):
 
         return train_samples, val_samples, test_samples
 
+
 # class Flickr8k(Dataset):
+
+class Flicker8k:
+    def __init__(self, dir_path, cap_file, all_img_name, max_length=40, d_limiter=40000):
+
+        self.dir_path = dir_path
+        self.d_limiter = d_limiter
+        self.tokenizer = lambda s: s.split()
+        self.max_length = max_length
+        self._read_data(cap_file, all_img_name)
+        self.vocab_size = self.encoder.vocab_size
+
+    def _read_data(self, cap_file, all_img_name):
+        if not os.path.isfile(cap_file):
+            print(f'{cap_file}.pickle not Found.')
+            raise NotImplemented
+        else:
+            with open(cap_file, 'rb') as f:
+                train_captions = pickle.load(f)
+                self.train_captions = train_captions[:self.d_limiter]
+
+        if not os.path.isfile(all_img_name):
+            print(f'{all_img_name}.pickle not Found.')
+            raise NotImplemented
+        else:
+            with open(all_img_name, 'rb') as f:
+                img_name_vector = pickle.load(f)
+                self.img_name_vector = img_name_vector[:self.d_limiter]
+
+        self._encode_data(train_captions)
+
+    def _encode_data(self, train_captions):
+        self.encoder = StaticTokenizerEncoder(train_captions,
+                                              tokenize=self.tokenizer,
+                                              min_occurrences=2,
+                                              padding_index=0,
+                                              unknown_index=1)
+
+        encoded_data = [self.encoder.encode(e) for e in train_captions]
+        self.encoded_data = [pad_tensor(x, length=self.max_length) for x in encoded_data]
+
+    @property
+    def get_splits(self):
+        train_split = FlickerIterator(self.img_name_vector[:32000], self.encoded_data[:32000])
+        val_split = FlickerIterator(self.img_name_vector[32000:], self.encoded_data[32000:])
+        return train_split, val_split
+
+
+class FlickerIterator(Dataset_Org):
+    def __init__(self, img_name_vector, encoded_captions):
+        super(FlickerIterator, self).__init__()
+        self.img_name_vector = img_name_vector
+        self.encoded_captions = encoded_captions
+
+    def _load_features(self, cap_name):
+        img_tensor = np.load(cap_name + '.npy')
+        return img_tensor
+
+    def __len__(self):
+        return len(self.img_name_vector)
+
+    def __getitem__(self, item):
+        return self._load_features(self.img_name_vector[item]), self.encoded_captions[item]

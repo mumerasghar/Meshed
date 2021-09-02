@@ -88,6 +88,7 @@ def train_xe(model, dataloader, optim, data_):
             pbar.set_postfix(loss=running_loss / (it + 1))
             pbar.update()
             scheduler.step()
+            break
 
     loss = running_loss / len(dataloader)
     return loss
@@ -182,11 +183,12 @@ if __name__ == '__main__':
     dir_path = './Flicker8k_Dataset/'
     all_img_name = 'img_name.pickle'
 
-    train_dataset = Flicker8k(dir_path, cap_file, all_img_name)
+    data = Flicker8k(dir_path, cap_file, all_img_name)
+    train_dataset, val_dataset = data.get_splits
     encoder = MemoryAugmentedEncoder(3, 0, attention_module=ScaledDotProductAttentionMemory,
                                      attention_module_kwargs={'m': args.m})
-    decoder = MeshedDecoder(train_dataset.vocab_size, 54, 3, train_dataset.encoder.token_to_index['<pad>'])
-    model = Transformer(train_dataset.encoder.token_to_index['<start>'], encoder, decoder).to(device)
+    decoder = MeshedDecoder(data.vocab_size, 54, 3, data.encoder.token_to_index['<pad>'])
+    model = Transformer(data.encoder.token_to_index['<start>'], encoder, decoder).to(device)
 
 
     # dict_dataset_train = train_dataset.image_dictionary({'image': image_field, 'text': RawField()})
@@ -204,7 +206,7 @@ if __name__ == '__main__':
     # Initial conditions
     optim = Adam(model.parameters(), lr=1, betas=(0.9, 0.98))
     scheduler = LambdaLR(optim, lambda_lr)
-    loss_fn = NLLLoss(ignore_index=train_dataset.encoder.token_to_index['<pad>'])
+    loss_fn = NLLLoss(ignore_index=data.encoder.token_to_index['<pad>'])
     use_rl = False
     best_cider = .0
     patience = 0
@@ -233,7 +235,7 @@ if __name__ == '__main__':
     #             data['epoch'], data['val_loss'], data['best_cider']))
 
     print("Training starts")
-    for e in range(start_epoch, start_epoch + 100):
+    for e in range(start_epoch, start_epoch + 1):
         dataloader_train = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.workers)
         # dataloader_val = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers)
         # dict_dataloader_train = DataLoader(dict_dataset_train, batch_size=args.batch_size // 5, shuffle=True,
@@ -242,7 +244,7 @@ if __name__ == '__main__':
         # dict_dataloader_test = DataLoader(dict_dataset_test, batch_size=args.batch_size // 5)
 
         if not use_rl:
-            train_loss = train_xe(model, dataloader_train, optim, train_dataset)
+            train_loss = train_xe(model, dataloader_train, optim, data)
             writer.add_scalar('data/train_loss', train_loss, e)
         else:
             pass
@@ -283,6 +285,7 @@ if __name__ == '__main__':
         #     best = True
         # else:
         #     patience += 1
+
         patience += 1
 
         switch_to_rl = False
@@ -307,7 +310,6 @@ if __name__ == '__main__':
         #     model.load_state_dict(data['state_dict'])
         #     print('Resuming from epoch %d, validation loss %f, and best cider %f' % (
         #         data['epoch'], data['val_loss'], data['best_cider']))
-
         # torch.save({
         #     'torch_rng_state': torch.get_rng_state(),
         #     'cuda_rng_state': torch.cuda.get_rng_state(),
@@ -323,6 +325,20 @@ if __name__ == '__main__':
         #     'best_cider': best_cider,
         #     'use_rl': use_rl,
         # }, 'saved_models/%s_last.pth' % args.exp_name)
+
+        torch.save({
+            'torch_rng_state': torch.get_rng_state(),
+            # 'cuda_rng_state': torch.cuda.get_rng_state(),
+            'numpy_rng_state': np.random.get_state(),
+            'random_rng_state': random.getstate(),
+            'epoch': e,
+            'state_dict': model.state_dict(),
+            'optimizer': optim.state_dict(),
+            'scheduler': scheduler.state_dict(),
+            'patience': patience,
+            'best_cider': best_cider,
+            'use_rl': use_rl,
+        }, 'saved_models/%s_last.pth' % args.exp_name)
 
         # if best:
         #     copyfile('saved_models/%s_last.pth' % args.exp_name, 'saved_models/%s_best.pth' % args.exp_name)

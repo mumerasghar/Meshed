@@ -8,3 +8,6 @@ numpy~=1.19.5
 h5py~=3.1.0
 requests~=2.26.0
 pytorch-nlp
+
+pickle5~=0.0.11
+torchnlp
